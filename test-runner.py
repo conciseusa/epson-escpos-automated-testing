@@ -13,7 +13,7 @@ import time
 
 serial_host  = ''
 # Linux beaglebone 4.19.94-ti-r73
-serialp  = '/dev/ttyS1' # sudo apt-get install python3-serial if No module named 'serial' Error
+serialp  = '/dev/ttyS4' #'/dev/ttyS1' # sudo apt-get install python3-serial if No module named 'serial' Error
 serial_host  = 'Beaglebone Black' # restart: sudo shutdown -r now / shutdown: sudo shutdown -h now
 
 # While this is Py and can run many places, the IO code is written for the beaglebone black.
@@ -57,82 +57,101 @@ def magnify(wm, hm): # Code for magnification of characters.
 def text(t, encoding="ascii"): # Code for sending text to printer.
     return bytes(t, encoding)
 
-UART.setup('UART1')
-ser = serial.Serial(serialp, 38400, timeout=10)
-ser.write(init)
+enable_printer = False # True
+if enable_printer:
+	UART.setup('UART1')
+	ser = serial.Serial(serialp, 38400, timeout=10)
+	ser.write(init)
+
+print('Init done. Waiting for button press...')
 
 while True:
-
+    print('Waiting for button press...')
     GPIO.wait_for_edge("P8_19", GPIO.FALLING)
 
-    ser.write(text("Hello World!"))
-    if serial_host:
-        ser.write(text(" From {} land.".format(serial_host)))
-    ser.write(lf)
+    if enable_printer:
+		ser.write(text("Hello World!"))
+		if serial_host:
+			ser.write(text(" From {} land.".format(serial_host)))
+		ser.write(lf)
 
-    ser.write(text("The time is: "))
-    now = datetime.now()
-    ser.write(text("{}".format(now.strftime("%Y/%m/%d %H:%M:%S"))))
-    ser.write(lf)
+		ser.write(text("The time is: "))
+		now = datetime.now()
+		ser.write(text("{}".format(now.strftime("%Y/%m/%d %H:%M:%S"))))
+		ser.write(lf)
 
-    # ser.write(magnify(2, 2)) # did not seem to do anything on TM-T20II
+        # ser.write(magnify(2, 2)) # did not seem to do anything on TM-T20II
 
-    count = 1
-    while count <= 2:
-        ser.write(text("Sent {} line(s)".format(count)))
-        ser.write(lf)
-        time.sleep(1)
-        count += 1
+		count = 1
+		while count <= 2:
+			ser.write(text("Sent {} line(s)".format(count)))
+			ser.write(lf)
+			time.sleep(1)
+			count += 1
 
-    # Read a value to test printer sending serial data
-    ser.write(get_paper_status)
-    paper_status = ser.read().hex()
-    # Print according to the hexadecimal value returned by the printer
-    if paper_status == "12":
-        paper_status_text = 'Paper adequate'
-    elif paper_status == "1e":
-        paper_status_text = 'Paper near-end detected by near-end sensor'
-    elif paper_status == "72":
-        paper_status_text = 'Paper end detected by roll sensor'
-    elif paper_status == "7e":
-        paper_status_text = 'Both sensors detect paper out'
-    else:
-        paper_status_text = 'Unknown paper status value'
-        # if the script stalls for the timeout period, and this is the paper status, read timed out
-    print(paper_status_text)
-    ser.write(lf)
-    ser.write(text("{}".format(paper_status_text)))
+		# Read a value to test printer sending serial data
+		ser.write(get_paper_status)
+		paper_status = ser.read().hex()
+		# Print according to the hexadecimal value returned by the printer
+		if paper_status == "12":
+			paper_status_text = 'Paper adequate'
+		elif paper_status == "1e":
+			paper_status_text = 'Paper near-end detected by near-end sensor'
+		elif paper_status == "72":
+			paper_status_text = 'Paper end detected by roll sensor'
+		elif paper_status == "7e":
+			paper_status_text = 'Both sensors detect paper out'
+		else:
+			paper_status_text = 'Unknown paper status value'
+			# if the script stalls for the timeout period, and this is the paper status, read timed out
+		print(paper_status_text)
+		ser.write(lf)
+		ser.write(text("{}".format(paper_status_text)))
 
-    #read returns values 0-1.0 
-    #value = ADC.read("P9_40")
+    #value = ADC.read("P9_40") # read returns values 0-1.0 
 
     # read_raw returns non-normalized value
-    # use voltage divider: 221K | 10K + 470 trimmer for .01V / ADC level
+    # use voltage divider: 221K | 10K + 470 trimmer for .01V per ADC level
     value = ADC.read_raw("P9_40")
     print(value)
-    ser.write(lf)
-    ser.write(text("P9_40: {}".format(value)))
+    if enable_printer:
+		ser.write(lf)
+		ser.write(text("P9_40: {}".format(value)))
 
-    # Set up pins as inputs or outputs
-    GPIO.setup("P8_19", GPIO.IN, GPIO.PUD_UP)
+    # To read pin
+    #if GPIO.input("P8_19"):
+    #    print("P8_19 HIGH")
+    #else:
+    #    print("P8_19 LOW")
+
     GPIO.setup("P8_7", GPIO.OUT)
     #GPIO.setup("GPIO0_26", GPIO.OUT)  # Alternative: use actual pin names
+    GPIO.setup("P8_9", GPIO.OUT)
+    GPIO.setup("P8_11", GPIO.OUT)
+    GPIO.setup("P8_13", GPIO.OUT)
 
-    if GPIO.input("P8_19"):
-        print("P8_19 HIGH")
-    else:
-        print("P8_19 LOW")
-
-
-
-    # Write a logic high or logic low
+    # Test the relays
     GPIO.output("P8_7", GPIO.HIGH)  # You can also write '1' instead
+    time.sleep(1)
     GPIO.output("P8_7", GPIO.LOW)   # You can also write '0' instead
+    GPIO.output("P8_9", GPIO.HIGH)  # You can also write '1' instead
+    time.sleep(1)
+    GPIO.output("P8_9", GPIO.LOW)
+    GPIO.output("P8_11", GPIO.HIGH)  # You can also write '1' instead
+    time.sleep(1)
+    GPIO.output("P8_11", GPIO.LOW)
+    GPIO.output("P8_13", GPIO.HIGH)  # You can also write '1' instead
+    time.sleep(1)
+    GPIO.output("P8_13", GPIO.LOW)
 
-    # all tests finish printing
-    ser.write(lf+lf+lf+lf) # move printed area above blade
-    ser.write(cut)
+    if enable_printer:
+		# all tests done finish printing
+		ser.write(lf+lf+lf+lf) # move printed area above blade
+		ser.write(cut)
 
     # wait for run button to be releases so a stuck button will not burn out all the printer paper
-    GPIO.wait_for_edge("P8_19", GPIO.RISING)
+    while GPIO.digital_read(P8_19) == LOW: # :HIGH or :LOW
+		print('Tests done. Waiting for button release...')
+		time.sleep(1)
+    # GPIO.wait_for_edge("P8_19", GPIO.RISING)
 
