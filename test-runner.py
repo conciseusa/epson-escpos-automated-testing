@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
-# run with `python3 epson-escpos-hello-world-serial.py`
+# run with `python3 test-runner.py`
+
 # If PySerial not installed, install as root or consider a python virtual environment
 # sudo apt install python3-pip
 # sudo pip3 install pyserial
@@ -59,9 +60,9 @@ def text(t, encoding="ascii"): # Code for sending text to printer.
 
 enable_printer = False # True
 if enable_printer:
-	UART.setup('UART1')
-	ser = serial.Serial(serialp, 38400, timeout=10)
-	ser.write(init)
+    UART.setup('UART1')
+    ser = serial.Serial(serialp, 38400, timeout=10)
+    ser.write(init)
 
 print('Init done. Waiting for button press...')
 
@@ -70,43 +71,43 @@ while True:
     GPIO.wait_for_edge("P8_19", GPIO.FALLING)
 
     if enable_printer:
-		ser.write(text("Hello World!"))
-		if serial_host:
-			ser.write(text(" From {} land.".format(serial_host)))
-		ser.write(lf)
+        ser.write(text("Hello World!"))
+        if serial_host:
+            ser.write(text(" From {} land.".format(serial_host)))
+        ser.write(lf)
 
-		ser.write(text("The time is: "))
-		now = datetime.now()
-		ser.write(text("{}".format(now.strftime("%Y/%m/%d %H:%M:%S"))))
-		ser.write(lf)
+        ser.write(text("The time is: "))
+        now = datetime.now()
+        ser.write(text("{}".format(now.strftime("%Y/%m/%d %H:%M:%S"))))
+        ser.write(lf)
 
         # ser.write(magnify(2, 2)) # did not seem to do anything on TM-T20II
 
-		count = 1
-		while count <= 2:
-			ser.write(text("Sent {} line(s)".format(count)))
-			ser.write(lf)
-			time.sleep(1)
-			count += 1
+        count = 1
+        while count <= 2:
+            ser.write(text("Sent {} line(s)".format(count)))
+            ser.write(lf)
+            time.sleep(1)
+            count += 1
 
-		# Read a value to test printer sending serial data
-		ser.write(get_paper_status)
-		paper_status = ser.read().hex()
-		# Print according to the hexadecimal value returned by the printer
-		if paper_status == "12":
-			paper_status_text = 'Paper adequate'
-		elif paper_status == "1e":
-			paper_status_text = 'Paper near-end detected by near-end sensor'
-		elif paper_status == "72":
-			paper_status_text = 'Paper end detected by roll sensor'
-		elif paper_status == "7e":
-			paper_status_text = 'Both sensors detect paper out'
-		else:
-			paper_status_text = 'Unknown paper status value'
-			# if the script stalls for the timeout period, and this is the paper status, read timed out
-		print(paper_status_text)
-		ser.write(lf)
-		ser.write(text("{}".format(paper_status_text)))
+        # Read a value to test printer sending serial data
+        ser.write(get_paper_status)
+        paper_status = ser.read().hex()
+        # Print according to the hexadecimal value returned by the printer
+        if paper_status == "12":
+            paper_status_text = 'Paper adequate'
+        elif paper_status == "1e":
+            paper_status_text = 'Paper near-end detected by near-end sensor'
+        elif paper_status == "72":
+            paper_status_text = 'Paper end detected by roll sensor'
+        elif paper_status == "7e":
+            paper_status_text = 'Both sensors detect paper out'
+        else:
+            paper_status_text = 'Unknown paper status value'
+            # if the script stalls for the timeout period, and this is the paper status, read timed out
+        print(paper_status_text)
+        ser.write(lf)
+        ser.write(text("{}".format(paper_status_text)))
 
     #value = ADC.read("P9_40") # read returns values 0-1.0 
 
@@ -115,8 +116,8 @@ while True:
     value = ADC.read_raw("P9_40")
     print(value)
     if enable_printer:
-		ser.write(lf)
-		ser.write(text("P9_40: {}".format(value)))
+        ser.write(lf)
+        ser.write(text("P9_40: {}".format(value)))
 
     # To read pin
     #if GPIO.input("P8_19"):
@@ -145,13 +146,13 @@ while True:
     GPIO.output("P8_13", GPIO.LOW)
 
     if enable_printer:
-		# all tests done finish printing
-		ser.write(lf+lf+lf+lf) # move printed area above blade
-		ser.write(cut)
+        # all tests done finish printing
+        ser.write(lf+lf+lf+lf) # move printed area above blade
+        ser.write(cut)
 
     # wait for run button to be releases so a stuck button will not burn out all the printer paper
-    while GPIO.digital_read(P8_19) == LOW: # :HIGH or :LOW
-		print('Tests done. Waiting for button release...')
-		time.sleep(1)
+    while not GPIO.input("P8_19"):
+        print('Tests done. Waiting for button release...')
+        time.sleep(1)
     # GPIO.wait_for_edge("P8_19", GPIO.RISING)
 
