@@ -5,7 +5,7 @@
 # If PySerial not installed, install as root or consider a python virtual environment
 # sudo apt install python3-pip
 # sudo pip3 install pyserial
-# If you see Permission denied: '/dev/ttyS0' adding user to the dialout group may fix the error
+# If you see Permission denied: '/dev/ttyS0' / or port trying to use, adding user to the dialout group may fix the error
 # sudo adduser YourUserName dialout # logout, login and try again
 
 import serial
@@ -14,10 +14,11 @@ import time
 
 serial_host  = ''
 # Linux beaglebone 4.19.94-ti-r73
-serialp  = '/dev/ttyS4' #'/dev/ttyS1' # sudo apt-get install python3-serial if No module named 'serial' Error
+serialp  = '/dev/ttyS1' # /dev/ttyS1 at pins 24, 26 # sudo apt-get install python3-serial if No module named 'serial' Error
 serial_host  = 'Beaglebone Black' # restart: sudo shutdown -r now / shutdown: sudo shutdown -h now
 
-# While this is Py and can run many places, the IO code is written for the beaglebone black.
+# While this is Python and can run many places, the testing IO code is written for the beaglebone black.
+
 # Below are some ports that can be used to talk to the printer on other platforms.
 # Windows built in serial port
 #serialp  = 'COM1'
@@ -58,22 +59,43 @@ def magnify(wm, hm): # Code for magnification of characters.
 def text(t, encoding="ascii"): # Code for sending text to printer.
     return bytes(t, encoding)
 
-enable_printer = False # True
+enable_printer = True # True  False
 if enable_printer:
     UART.setup('UART1')
     ser = serial.Serial(serialp, 38400, timeout=10)
     ser.write(init)
 
+dut_id = 'P783F-LM317'
+
+def test_result(test_name, pass_chain, in_lgo, in_hgo, out_lgo, out_hgo):
+    vin = ADC.read_raw("P9_40")/100
+    vout = ADC.read_raw("P9_39")/100
+    vout *= 1.03 # first unit built with 470 trimmers, was not enough, use this hack until hardware updated
+    test_go = vin >= in_lgo and vin <= in_hgo and vout >= out_lgo and vout <= out_hgo
+    pass_chain = test_go if not test_go else pass_chain # set pass chain to False if a test fails
+    result_str = "Vin: {0:.1f} Vout: {1:.1f} Passed: {2}"
+    result = result_str.format(vin, vout, str(test_go))
+    print(test_name)
+    print(result)
+    if enable_printer:
+        ser.write(text(test_name))
+        ser.write(lf)
+        ser.write(text(result))
+        ser.write(lf)
+
+    return pass_chain
+
 print('Init done. Waiting for button press...')
 
 while True:
     print('Waiting for button press...')
-    GPIO.wait_for_edge("P8_19", GPIO.FALLING)
+    GPIO.wait_for_edge("P8_19", GPIO.FALLING) # GPIO.RISING
+
+    print("")
+    print("DUT: " + dut_id)
 
     if enable_printer:
-        ser.write(text("Hello World!"))
-        if serial_host:
-            ser.write(text(" From {} land.".format(serial_host)))
+        ser.write(text("DUT: " + dut_id))
         ser.write(lf)
 
         ser.write(text("The time is: "))
@@ -83,7 +105,7 @@ while True:
 
         # ser.write(magnify(2, 2)) # did not seem to do anything on TM-T20II
 
-        count = 1
+        count = 3 # disable for now
         while count <= 2:
             ser.write(text("Sent {} line(s)".format(count)))
             ser.write(lf)
@@ -105,45 +127,71 @@ while True:
         else:
             paper_status_text = 'Unknown paper status value'
             # if the script stalls for the timeout period, and this is the paper status, read timed out
-        print(paper_status_text)
-        ser.write(lf)
-        ser.write(text("{}".format(paper_status_text)))
+        if paper_status != "12": # show if there is a problem
+            print('Warning: ', paper_status_text)
+            ser.write(lf)
+            ser.write(text("Warning: {}".format(paper_status_text)))
 
     #value = ADC.read("P9_40") # read returns values 0-1.0 
 
     # read_raw returns non-normalized value
-    # use voltage divider: 221K | 10K + 470 trimmer for .01V per ADC level
-    value = ADC.read_raw("P9_40")
-    print(value)
-    if enable_printer:
-        ser.write(lf)
-        ser.write(text("P9_40: {}".format(value)))
+    # use voltage divider: 221K | 10K + 1K trimmer for .01V per ADC level, .1 uf cap at ADC input adds low pass filter
+    count = 0 # set to greater then 1 to loop and make it easier to set trimmers, etc.
+    while count:
+        vin = ADC.read_raw("P9_40")
+        print("A1 Vin: ", vin)
+        vout = ADC.read_raw("P9_39")
+        vout *= 1.03 # first unit built with 470 trimmers, was not enough, use this hack until hardware updated
+        print("A0 Vout: ", vout)
+        count -= 1
 
-    # To read pin
-    #if GPIO.input("P8_19"):
-    #    print("P8_19 HIGH")
-    #else:
-    #    print("P8_19 LOW")
-
-    GPIO.setup("P8_7", GPIO.OUT)
+    GPIO.setup("P8_7", GPIO.OUT) # test voltage in, on is higher
     #GPIO.setup("GPIO0_26", GPIO.OUT)  # Alternative: use actual pin names
-    GPIO.setup("P8_9", GPIO.OUT)
-    GPIO.setup("P8_11", GPIO.OUT)
-    GPIO.setup("P8_13", GPIO.OUT)
+    GPIO.setup("P8_9", GPIO.OUT) # not used
+    GPIO.setup("P8_11", GPIO.OUT) # 22 ohm load
+    GPIO.setup("P8_13", GPIO.OUT) # 100 ohm load
+    GPIO.setup("P8_15", GPIO.OUT) # DUT enable
 
-    # Test the relays
+    vinnll = 11.8 # Vin normal low limit
+    vinnhl = 12.5 # Vin normal high limit
+    vinhll = 22 # Vin higher low limit
+    vinhhl = 24.5 # Vin higher high limit
+    voutll = 7.8 # Vout low limit
+    vouthl = 8.2 # Vout high limit
+    on_time = 2 # in seconds
+    pass_chain = True # starts off passing, set to false if there is a failure in a test
+    GPIO.output("P8_15", GPIO.HIGH)
+    time.sleep(on_time)
+    pass_chain = test_result("No Load", pass_chain, vinnll, vinnhl, voutll, vouthl)
     GPIO.output("P8_7", GPIO.HIGH)  # You can also write '1' instead
-    time.sleep(1)
+    time.sleep(on_time)
+    pass_chain = test_result("Higher Vin, No Load", pass_chain, vinhll, vinhhl, voutll, vouthl)
     GPIO.output("P8_7", GPIO.LOW)   # You can also write '0' instead
-    GPIO.output("P8_9", GPIO.HIGH)  # You can also write '1' instead
-    time.sleep(1)
-    GPIO.output("P8_9", GPIO.LOW)
-    GPIO.output("P8_11", GPIO.HIGH)  # You can also write '1' instead
-    time.sleep(1)
+    #PIO.output("P8_9", GPIO.HIGH)
+    #time.sleep(on_time)
+    #GPIO.output("P8_9", GPIO.LOW)
+    GPIO.output("P8_11", GPIO.HIGH)
+    time.sleep(on_time)
+    pass_chain = test_result("~.36A Load", pass_chain, vinnll, vinnhl, voutll, vouthl)
     GPIO.output("P8_11", GPIO.LOW)
-    GPIO.output("P8_13", GPIO.HIGH)  # You can also write '1' instead
-    time.sleep(1)
+    GPIO.output("P8_13", GPIO.HIGH)
+    time.sleep(on_time)
+    pass_chain = test_result("~.08A Load", pass_chain, vinnll, vinnhl, voutll, vouthl)
+    GPIO.output("P8_11", GPIO.HIGH) # turn on both loads
+    time.sleep(on_time)
+    pass_chain = test_result("~.44A Load", pass_chain, vinnll, vinnhl, voutll, vouthl)
+    GPIO.output("P8_7", GPIO.HIGH) # increase input voltage
+    time.sleep(on_time)
+    pass_chain = test_result("Higher Vin, ~.44A Load", pass_chain, vinhll, vinhhl, voutll, vouthl)
+    GPIO.output("P8_15", GPIO.LOW)
+    time.sleep(on_time)
+    pass_chain = test_result("Disable, Higher Vin, ~.44A Load", pass_chain, vinhll, vinhhl, 0, .1)
+    GPIO.output("P8_7", GPIO.LOW)
+    GPIO.output("P8_11", GPIO.LOW)
     GPIO.output("P8_13", GPIO.LOW)
+    if enable_printer:
+        ser.write(text("All tests passed: " + str(pass_chain)))
+        ser.write(lf)
 
     if enable_printer:
         # all tests done finish printing
@@ -154,5 +202,3 @@ while True:
     while not GPIO.input("P8_19"):
         print('Tests done. Waiting for button release...')
         time.sleep(1)
-    # GPIO.wait_for_edge("P8_19", GPIO.RISING)
-
