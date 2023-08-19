@@ -42,6 +42,12 @@ import Adafruit_BBIO.GPIO as GPIO
 
 ADC.setup()
 GPIO.setup("P8_19", GPIO.IN, GPIO.PUD_UP) # Push button to trigger tests. Button pulls down when pushed.
+GPIO.setup("P8_7", GPIO.OUT) # test voltage in, on is higher
+#GPIO.setup("GPIO0_26", GPIO.OUT)  # Alternative: use actual pin names
+GPIO.setup("P8_9", GPIO.OUT) # not used
+GPIO.setup("P8_11", GPIO.OUT) # 22 ohm load
+GPIO.setup("P8_13", GPIO.OUT) # 100 ohm load
+GPIO.setup("P8_15", GPIO.OUT) # DUT enable
 
 # Some common TM-T20II commands, should work on other printers, but need to be tested.
 init=b'\x1b\x40' # ESC @ Initialize printer
@@ -91,10 +97,36 @@ while True:
     print('Waiting for button press...')
     GPIO.wait_for_edge("P8_19", GPIO.FALLING) # GPIO.RISING
 
+    # value = ADC.read("P9_40") # read returns values 0-1.0 
+    # read_raw returns non-normalized value
+    # use voltage divider: 221K | 10K + 1K trimmer for .01V per ADC level, .1 uf cap at ADC input adds low pass filter
+    time.sleep(1)
+    cal_messages = False
+    count = 10 # dont loop forever so a stuck button will not burn out all the printer paper
+    while not GPIO.input("P8_19") and count: # if button held down, print cal messages
+        GPIO.output("P8_15", GPIO.HIGH) # turn on DUT
+        time.sleep(0.100) # time for Vout to come up when first turned on
+        vin = ADC.read_raw("P9_40")
+        print("A1 Vin: ", vin)
+        vout = ADC.read_raw("P9_39")
+        vout *= 1.03 # first unit built with 470 trimmers, was not enough, use this hack until hardware updated
+        print("A0 Vout: ", vout)
+        if enable_printer:
+            cal_messages = True # if cal messages sent, cut paper before tests
+            ser.write(text(("Vin: {0:.2f} Vout: {1:.2f}").format(vin, vout)))
+            ser.write(lf)
+        time.sleep(5) # time to move meter probe
+        count -= 1
+    if enable_printer and cal_messages: # cut for clean start of tests
+        ser.write(lf+lf+lf+lf) # move printed area above blade
+        ser.write(cut)
+
     print("")
     print("DUT: " + dut_id)
 
     if enable_printer:
+        # ser.write(magnify(2, 2)) # did not seem to do anything on TM-T20II
+
         ser.write(text("DUT: " + dut_id))
         ser.write(lf)
 
@@ -103,19 +135,10 @@ while True:
         ser.write(text("{}".format(now.strftime("%Y/%m/%d %H:%M:%S"))))
         ser.write(lf)
 
-        # ser.write(magnify(2, 2)) # did not seem to do anything on TM-T20II
-
-        count = 3 # disable for now
-        while count <= 2:
-            ser.write(text("Sent {} line(s)".format(count)))
-            ser.write(lf)
-            time.sleep(1)
-            count += 1
-
         # Read a value to test printer sending serial data
         ser.write(get_paper_status)
         paper_status = ser.read().hex()
-        # Print according to the hexadecimal value returned by the printer
+        # Message according to the hexadecimal value returned by the printer
         if paper_status == "12":
             paper_status_text = 'Paper adequate'
         elif paper_status == "1e":
@@ -131,26 +154,6 @@ while True:
             print('Warning: ', paper_status_text)
             ser.write(lf)
             ser.write(text("Warning: {}".format(paper_status_text)))
-
-    #value = ADC.read("P9_40") # read returns values 0-1.0 
-
-    # read_raw returns non-normalized value
-    # use voltage divider: 221K | 10K + 1K trimmer for .01V per ADC level, .1 uf cap at ADC input adds low pass filter
-    count = 0 # set to greater then 1 to loop and make it easier to set trimmers, etc.
-    while count:
-        vin = ADC.read_raw("P9_40")
-        print("A1 Vin: ", vin)
-        vout = ADC.read_raw("P9_39")
-        vout *= 1.03 # first unit built with 470 trimmers, was not enough, use this hack until hardware updated
-        print("A0 Vout: ", vout)
-        count -= 1
-
-    GPIO.setup("P8_7", GPIO.OUT) # test voltage in, on is higher
-    #GPIO.setup("GPIO0_26", GPIO.OUT)  # Alternative: use actual pin names
-    GPIO.setup("P8_9", GPIO.OUT) # not used
-    GPIO.setup("P8_11", GPIO.OUT) # 22 ohm load
-    GPIO.setup("P8_13", GPIO.OUT) # 100 ohm load
-    GPIO.setup("P8_15", GPIO.OUT) # DUT enable
 
     vinnll = 11.8 # Vin normal low limit
     vinnhl = 12.5 # Vin normal high limit
@@ -189,12 +192,15 @@ while True:
     GPIO.output("P8_7", GPIO.LOW)
     GPIO.output("P8_11", GPIO.LOW)
     GPIO.output("P8_13", GPIO.LOW)
+    print("All tests passed: " + str(pass_chain))
+    print("Warning: Some tests dissipate significant")
+    print("power and can only be run for a short time!")
     if enable_printer:
-        ser.write(text("All tests passed: " + str(pass_chain)))
+        ser.write(text("All tests passed: " + str(pass_chain))) # all tests done finish printing
         ser.write(lf)
-
-    if enable_printer:
-        # all tests done finish printing
+        ser.write(text("Warning: Some tests dissipate significant"))
+        ser.write(lf)
+        ser.write(text("power and can only be run for a short time!"))
         ser.write(lf+lf+lf+lf) # move printed area above blade
         ser.write(cut)
 
