@@ -1,6 +1,12 @@
 #!/usr/bin/python
 
 # run with `python3 test-runner.py`
+# To run automatically at boot up add below with `sudo crontab -e` Update location if needed. Note script is running as root to access GPIO.
+# @reboot cd /home/debian/git/epson-escpos-automated-testing/; python3 ./test-runner.py > /home/debian/test-runner.log 2>&1;
+# The DUT may turn on at reboot because the GPIO switches to input mode, when the script runs, the DUT should turn off.
+# sudo systemctl status cron.service # getting crontabs to run can be tricky because it is hard to see errors, etc., this command will sometimes help with that.
+# ps -fA | grep python # to see the id of the running process so you can sudo kill if needed to restart after editing etc.
+# Look for 'python3 ./test-runner.py' then sudo kill enter_id
 
 # If PySerial not installed, install as root or consider a python virtual environment
 # sudo apt install python3-pip
@@ -121,18 +127,18 @@ while True:
         ser.write(lf+lf+lf+lf) # move printed area above blade
         ser.write(cut)
 
+    now = datetime.now()
     print("")
     print("DUT: " + dut_id)
+    print("The time is: {}".format(now.strftime("%Y/%m/%d %H:%M:%S")))
 
     if enable_printer:
         # ser.write(magnify(2, 2)) # did not seem to do anything on TM-T20II
 
         ser.write(text("DUT: " + dut_id))
         ser.write(lf)
-
-        ser.write(text("The time is: "))
-        now = datetime.now()
-        ser.write(text("{}".format(now.strftime("%Y/%m/%d %H:%M:%S"))))
+        ser.write(text("The time is: {}".format(now.strftime("%Y/%m/%d %H:%M:%S"))))
+        #ser.write(text("{}".format(now.strftime("%Y/%m/%d %H:%M:%S"))))
         ser.write(lf)
 
         # Read a value to test printer sending serial data
@@ -194,7 +200,7 @@ while True:
     GPIO.output("P8_13", GPIO.LOW)
     print("All tests passed: " + str(pass_chain))
     print("Warning: Some tests dissipate significant")
-    print("power and can only be run for a short time!")
+    print("power and can only be run for a short time!", flush=True)
     if enable_printer:
         ser.write(text("All tests passed: " + str(pass_chain))) # all tests done finish printing
         ser.write(lf)
@@ -206,5 +212,5 @@ while True:
 
     # wait for run button to be releases so a stuck button will not burn out all the printer paper
     while not GPIO.input("P8_19"):
-        print('Tests done. Waiting for button release...')
+        print('Tests done. Waiting for button release...', flush=True)
         time.sleep(1)
